@@ -1,1 +1,39 @@
 
+name: Discover CPAs (DuckDuckGo)
+
+on:
+  workflow_dispatch:
+    inputs:
+      spec_path:
+        description: "Path to CPA run spec JSON"
+        required: true
+        default: "scripts/specs/houston.cpa.json"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run CPA discovery
+        env:
+          RUN_SPEC_PATH: ${{ inputs.spec_path }}
+        run: npm run run:cpa
+
+      - name: Upload data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpa-discovery-output
+          path: data/**
