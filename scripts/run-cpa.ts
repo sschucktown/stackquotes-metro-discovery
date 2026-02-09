@@ -1,11 +1,12 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { RateLimiter } from "./core/rateLimit.js";
-import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
-import { fetchHtml } from "./core/fetchPage.js";
-import { extractFromHtml } from "./core/extractText.js";
-import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
-import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy.js";
+import { RateLimiter } from "./core/rateLimit";
+import { duckDuckGoSearch } from "./core/searchDuckDuckGo";
+import { fetchHtml } from "./core/fetchPage";
+import { extractFromHtml } from "./core/extractText";
+import { evaluateCpaSite } from "./evaluators/evaluateCpa";
+import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy";
+
 
 type TrustProxySpec = {
   enabled: boolean;
