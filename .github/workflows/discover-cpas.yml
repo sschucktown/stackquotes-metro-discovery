@@ -20,6 +20,10 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install
+        run: npm install
+
+      # 🔍 DEBUG STEP — MUST RUN BEFORE BUILD
       - name: Debug filesystem
         run: |
           echo "=== REPO ROOT ==="
@@ -28,25 +32,18 @@ jobs:
           echo "=== scripts ==="
           ls -la scripts || echo "NO scripts DIR"
           echo ""
-          echo "=== scripts/trust-proxy ==="
-          ls -la scripts/trust-proxy || echo "NO trust-proxy DIR"
+          echo "=== trust proxy dirs ==="
+          find scripts -maxdepth 2 -type d | sed 's/^/DIR: /'
           echo ""
-          echo "=== FIND mineTrustProxy ==="
-          find scripts -iname "*trust*proxy*" || true
+          echo "=== trust proxy files ==="
+          find scripts -type f | sed 's/^/FILE: /'
 
-      - name: Install
-        run: npm install
+      # 🚫 TEMPORARILY DISABLE BUILD
+      # - name: Build
+      #   run: npm run build
 
-      - name: Build
-        run: npm run build
-
-      - name: Run CPA discovery
-        env:
-          RUN_SPEC_PATH: ${{ inputs.spec_path }}
-        run: npm run run:cpa
-
-      - name: Upload data artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cpa-discovery-output
-          path: data/**
+      # 🚫 ALSO DISABLE RUN STEP FOR NOW
+      # - name: Run CPA discovery
+      #   env:
+      #     RUN_SPEC_PATH: ${{ inputs.spec_path }}
+      #   run: npm run run:cpa
