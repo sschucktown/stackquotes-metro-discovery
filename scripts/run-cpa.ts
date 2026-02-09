@@ -1,25 +1,30 @@
 import fs from "fs";
 import path from "path";
 
-import { rateLimit } from "./core/rateLimit.js";
-import { searchDuckDuckGo } from "./core/searchDuckDuckGo.js";
-import { fetchPage } from "./core/fetchPage.js";
-import { extractText } from "./core/extractText.js";
-import { evaluateCpa } from "./evaluators/evaluateCpa.js";
-import { mineTrustProxyCandidates } from "./trust-proxy/index.js";
+import { RateLimiter } from "./core/rateLimit.js";
+import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
+import { fetchHtml } from "./core/fetchPage.js";
+import { extractFromHtml } from "./core/extractText.js";
+import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
+import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy.js";
 
 type RunSpec = {
   metro: string;
   category: string;
   language?: string;
+
   queries?: string[];
   search_queries?: string[];
+
   spanish_parity?: {
     enabled: boolean;
     language?: string;
     queries?: string[];
     search_queries?: string[];
   };
+
+  trust_proxy?: any;
+
   output?: {
     raw_path?: string;
     scored_path?: string;
@@ -27,50 +32,52 @@ type RunSpec = {
 };
 
 function normalizeQueries(
-  spec: RunSpec,
+  obj: { queries?: string[]; search_queries?: string[] },
   label: string
 ): string[] {
-  const queries =
-    spec.queries ??
-    spec.search_queries ??
-    [];
-
-  if (!Array.isArray(queries) || queries.length === 0) {
-    throw new Error(
-      `Run spec error: ${label} queries missing or not an array`
-    );
+  const q = obj.queries ?? obj.search_queries;
+  if (!Array.isArray(q) || q.length === 0) {
+    throw new Error(`Run spec error: ${label} queries missing or invalid`);
   }
-
-  return queries;
+  return q;
 }
 
 async function runDiscoveryPass(
+  metro: string,
   queries: string[],
-  label: string
+  searchLimiter: RateLimiter,
+  crawlLimiter: RateLimiter
 ) {
   const results: any[] = [];
 
   for (const query of queries) {
-    console.log(`[${label}] Searching: ${query}`);
+    console.log(`[CPA] search: ${query}`);
 
-    await rateLimit();
+    const hits = await duckDuckGoSearch(query, searchLimiter, 25);
 
-    const urls = await searchDuckDuckGo(query);
+    for (const hit of hits) {
+      if (!hit.url) continue;
 
-    for (const url of urls) {
       try {
-        await rateLimit();
+        const res = await fetchHtml(hit.url, crawlLimiter, {
+          timeoutMs: 20000,
+          maxRetries: 1
+        });
 
-        const html = await fetchPage(url);
-        const text = extractText(html);
+        if (!res.ok || !res.html) continue;
+
+        const extracted = extractFromHtml(res.html);
 
         results.push({
-          query,
-          url,
-          text
+          metro,
+          source_query: hit.sourceQuery,
+          title: hit.title,
+          url: hit.url,
+          snippet: hit.snippet ?? "",
+          page: extracted
         });
-      } catch (err) {
-        console.warn(`Failed to fetch ${url}`);
+      } catch {
+        // swallow fetch failures
       }
     }
   }
@@ -80,60 +87,82 @@ async function runDiscoveryPass(
 
 async function main() {
   const specPath =
-    process.env.RUN_SPEC_PATH ||
-    process.argv[2];
+    process.env.RUN_SPEC_PATH || process.argv[2];
 
   if (!specPath) {
     throw new Error("RUN_SPEC_PATH not provided");
   }
 
-  const rawSpec = fs.readFileSync(specPath, "utf8");
-  const spec: RunSpec = JSON.parse(rawSpec);
+  const spec: RunSpec = JSON.parse(
+    fs.readFileSync(specPath, "utf8")
+  );
 
-  // --- Normalize primary queries ---
+  const metro = spec.metro;
+
   const primaryQueries = normalizeQueries(
     spec,
     "primary"
   );
 
-  const allResults: any[] = [];
+  const searchLimiter = new RateLimiter(950);
+  const crawlLimiter = new RateLimiter(800);
 
-  // --- Pass 1: English / primary ---
-  const primaryResults = await runDiscoveryPass(
-    primaryQueries,
-    "primary"
+  const rawResults: any[] = [];
+
+  // ---- Pass 1: primary language
+  rawResults.push(
+    ...(await runDiscoveryPass(
+      metro,
+      primaryQueries,
+      searchLimiter,
+      crawlLimiter
+    ))
   );
-  allResults.push(...primaryResults);
 
-  // --- Pass 2: Spanish parity (optional) ---
+  // ---- Pass 2: Spanish parity
   if (spec.spanish_parity?.enabled) {
     const spanishQueries = normalizeQueries(
-      spec.spanish_parity as any,
+      spec.spanish_parity,
       "spanish"
     );
 
-    const spanishResults = await runDiscoveryPass(
-      spanishQueries,
-      "spanish"
+    rawResults.push(
+      ...(await runDiscoveryPass(
+        metro,
+        spanishQueries,
+        searchLimiter,
+        crawlLimiter
+      ))
     );
-
-    allResults.push(...spanishResults);
   }
 
-  // --- Trust proxy enrichment ---
-  const enriched = mineTrustProxyCandidates(allResults);
+  // ---- Trust proxy enrichment (async, 2-arg contract)
+  const trustProxyResults = spec.trust_proxy
+    ? await mineTrustProxyCandidates(metro, spec.trust_proxy)
+    : [];
 
-  // --- Scoring ---
-  const scored = enriched.map(evaluateCpa);
+  // ---- Combine page text for evaluation
+  const scored = rawResults.map((r) => {
+    const combinedText = [
+      r.title,
+      r.snippet,
+      r.page?.title,
+      r.page?.h1,
+      r.page?.text
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-  // --- Output ---
+    return {
+      ...r,
+      evaluation: evaluateCpaSite(combinedText)
+    };
+  });
+
   const rawPath =
-    spec.output?.raw_path ||
-    "data/cpas_raw.json";
-
+    spec.output?.raw_path || "data/cpas_raw.json";
   const scoredPath =
-    spec.output?.scored_path ||
-    "data/cpas_scored.json";
+    spec.output?.scored_path || "data/cpas_scored.json";
 
   fs.mkdirSync(path.dirname(rawPath), {
     recursive: true
@@ -141,7 +170,11 @@ async function main() {
 
   fs.writeFileSync(
     rawPath,
-    JSON.stringify(allResults, null, 2)
+    JSON.stringify(
+      { pages: rawResults, trust_proxy: trustProxyResults },
+      null,
+      2
+    )
   );
 
   fs.writeFileSync(
@@ -150,7 +183,7 @@ async function main() {
   );
 
   console.log(
-    `CPA discovery complete: ${allResults.length} raw results`
+    `CPA discovery complete: ${rawResults.length} pages, ${trustProxyResults.length} trust-proxy hits`
   );
 }
 
