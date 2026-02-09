@@ -5,11 +5,23 @@ import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
 import { fetchHtml } from "./core/fetchPage.js";
 import { extractFromHtml } from "./core/extractText.js";
 import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
+import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy.js";
 
-/**
- * Two-pass CPA discovery spec.
- * NOTE: There is intentionally NO `search_queries` field anymore.
- */
+type TrustProxySpec = {
+  enabled: boolean;
+  max_candidates_total: number;
+  max_candidates_per_source: {
+    supplier: number;
+    association: number;
+    expert: number;
+  };
+  queries: {
+    supplier: string[];
+    association: string[];
+    expert: string[];
+  };
+};
+
 type RunSpec = {
   metro: string;
   category: "CPA";
@@ -20,6 +32,9 @@ type RunSpec = {
 
   search_queries_pass1: string[];
   search_queries_pass2: string[];
+  search_queries_pass3?: string[];
+
+  trust_proxy?: TrustProxySpec;
 };
 
 type FirmCandidate = {
@@ -28,6 +43,7 @@ type FirmCandidate = {
   bestTitle: string;
   sourceQueries: string[];
   discoveredUrls: string[];
+  origin: "search" | "trust-proxy";
 };
 
 function slugifyMetro(s: string): string {
@@ -81,49 +97,57 @@ function isBannedDomain(domain: string): boolean {
   return banned.some((b) => domain === b || domain.endsWith(`.${b}`));
 }
 
+function pickCandidateName(fallbackTitle: string, extractedTitle: string, extractedH1: string): string {
+  const candidates = [extractedH1, extractedTitle, fallbackTitle]
+    .map((x) => (x || "").trim())
+    .filter(Boolean);
+
+  const name = candidates[0] ?? "Unknown Firm";
+  return name.replace(/\s+\|\s+.*$/, "").replace(/\s+-\s+.*$/, "").trim();
+}
+
 async function runDiscoveryPass(
-  passName: "pass1" | "pass2",
+  passName: "pass1" | "pass2" | "pass3",
   queries: string[],
   spec: RunSpec,
   searchLimiter: RateLimiter,
   candidatesByDomain: Map<string, FirmCandidate>
 ) {
-  if (!Array.isArray(queries)) {
-    throw new Error(`${passName} queries missing or invalid in spec`);
-  }
+  if (!Array.isArray(queries)) return;
 
   for (const q of queries) {
     const hits = await duckDuckGoSearch(q, searchLimiter, spec.max_results_per_query);
 
-    for (const h of hits) {
-      const domain = normalizeDomain(h.url);
+    for (const h of hits as any[]) {
+      const url = h.url || "";
+      const title = h.title || "";
+      if (!url) continue;
+
+      const domain = normalizeDomain(url);
       if (!domain) continue;
       if (isBannedDomain(domain)) continue;
 
-      const homeUrl = toHomeUrl(h.url);
+      const homeUrl = toHomeUrl(url);
       if (!homeUrl) continue;
 
       const existing = candidatesByDomain.get(domain);
       if (existing) {
         existing.sourceQueries.push(q);
-        existing.discoveredUrls.push(h.url);
-        if (existing.bestTitle.length < h.title.length) {
-          existing.bestTitle = h.title;
-        }
+        existing.discoveredUrls.push(url);
+        if (existing.bestTitle.length < title.length) existing.bestTitle = title;
       } else {
         candidatesByDomain.set(domain, {
           domain,
           homeUrl,
-          bestTitle: h.title,
+          bestTitle: title,
           sourceQueries: [q],
-          discoveredUrls: [h.url]
+          discoveredUrls: [url],
+          origin: "search"
         });
       }
     }
 
-    console.log(
-      `[${passName}] query="${q}" → total domains=${candidatesByDomain.size}`
-    );
+    console.log(`[${passName}] query="${q}" → domains=${candidatesByDomain.size}`);
   }
 }
 
@@ -131,11 +155,9 @@ async function main() {
   const specPath = process.env.RUN_SPEC_PATH || "scripts/specs/houston.cpa.json";
   const spec = JSON.parse(readFileSync(specPath, "utf-8")) as RunSpec;
 
-  // 🔒 Defensive validation
+  if (spec.category !== "CPA") throw new Error("This runner only supports category=CPA");
   if (!spec.search_queries_pass1 || !spec.search_queries_pass2) {
-    throw new Error(
-      "Spec must define search_queries_pass1 and search_queries_pass2"
-    );
+    throw new Error("Spec must define search_queries_pass1 and search_queries_pass2");
   }
 
   const metroSlug = spec.metro_slug ?? slugifyMetro(spec.metro);
@@ -145,37 +167,90 @@ async function main() {
 
   const candidatesByDomain = new Map<string, FirmCandidate>();
 
-  // ✅ Two-pass discovery ONLY
-  await runDiscoveryPass(
-    "pass1",
-    spec.search_queries_pass1,
-    spec,
-    searchLimiter,
-    candidatesByDomain
-  );
+  // Phase 1-3 discovery
+  await runDiscoveryPass("pass1", spec.search_queries_pass1, spec, searchLimiter, candidatesByDomain);
+  await runDiscoveryPass("pass2", spec.search_queries_pass2, spec, searchLimiter, candidatesByDomain);
+  if (spec.search_queries_pass3?.length) {
+    await runDiscoveryPass("pass3", spec.search_queries_pass3, spec, searchLimiter, candidatesByDomain);
+  }
 
-  await runDiscoveryPass(
-    "pass2",
-    spec.search_queries_pass2,
-    spec,
-    searchLimiter,
-    candidatesByDomain
-  );
+  // Phase 4 trust-proxy mining
+  const trustProxyEnabled = !!spec.trust_proxy?.enabled;
+  const trustProxyCandidates = trustProxyEnabled
+    ? await mineTrustProxyCandidates(spec.metro, spec.trust_proxy as any)
+    : [];
+
+  // Write trust-proxy raw file (always if enabled)
+  const outDir = resolve("data", metroSlug);
+  mkdirSync(outDir, { recursive: true });
+
+  if (trustProxyEnabled) {
+    const tpPath = resolve(outDir, "trust_proxy_raw.json");
+    writeFileSync(
+      tpPath,
+      JSON.stringify(
+        {
+          meta: {
+            metro: spec.metro,
+            metro_slug: metroSlug,
+            generated_at: new Date().toISOString(),
+            total_candidates: trustProxyCandidates.length
+          },
+          candidates: trustProxyCandidates
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+    console.log(`Wrote trust proxy candidates → ${tpPath}`);
+  }
+
+  // Convert trust-proxy candidates into firm candidates (domain-first)
+  for (const tp of trustProxyCandidates as any[]) {
+    const sourceUrl = tp.source_url || "";
+    const homeUrl = tp.home_url || (sourceUrl ? toHomeUrl(sourceUrl) : "");
+    const domain = tp.domain || (sourceUrl ? normalizeDomain(sourceUrl) : "");
+
+    if (!domain) continue;
+    if (isBannedDomain(domain)) continue;
+
+    const resolvedHome = homeUrl || (sourceUrl ? toHomeUrl(sourceUrl) : "");
+    if (!resolvedHome) continue;
+
+    const existing = candidatesByDomain.get(domain);
+    const label = `trust-proxy:${tp.source}`;
+
+    if (existing) {
+      existing.sourceQueries.push(label);
+      if (sourceUrl) existing.discoveredUrls.push(sourceUrl);
+      if (existing.bestTitle.length < (tp.firm_name || "").length) {
+        existing.bestTitle = tp.firm_name || existing.bestTitle;
+      }
+    } else {
+      candidatesByDomain.set(domain, {
+        domain,
+        homeUrl: resolvedHome,
+        bestTitle: tp.firm_name || domain,
+        sourceQueries: [label],
+        discoveredUrls: sourceUrl ? [sourceUrl] : [],
+        origin: "trust-proxy"
+      });
+    }
+  }
 
   const discovered = Array.from(candidatesByDomain.values());
 
+  // Crawl + evaluate
   const kept: any[] = [];
   let crawledPages = 0;
 
   for (const c of discovered) {
     if (kept.length >= spec.target_count * 2) break;
 
-    const homepage = await fetchHtml(c.homeUrl, crawlLimiter, {
-      timeoutMs: 20000,
-      maxRetries: 2
-    });
-
+    const homepage = await fetchHtml(c.homeUrl, crawlLimiter, { timeoutMs: 20000, maxRetries: 2 });
     crawledPages++;
+
     if (!homepage.ok || !homepage.html) continue;
 
     const extracted = extractFromHtml(homepage.html);
@@ -184,16 +259,20 @@ async function main() {
     const evaled = evaluateCpaSite(combinedText);
     if (!evaled.keep) continue;
 
+    const firmName = pickCandidateName(c.bestTitle, extracted.title, extracted.h1);
+
     kept.push({
-      name: extracted.h1 || extracted.title || c.bestTitle,
+      name: firmName,
       url: homepage.url,
       domain: c.domain,
       metro: spec.metro,
       category: spec.category,
-      score: evaled.score,
+      origin: c.origin,
       signals: evaled.signals,
+      score: evaled.score,
       reasons: evaled.reasons,
-      source_queries: Array.from(new Set(c.sourceQueries))
+      source_queries: Array.from(new Set(c.sourceQueries)),
+      discovered_urls_sample: c.discoveredUrls.slice(0, 5)
     });
   }
 
@@ -210,21 +289,23 @@ async function main() {
       total_discovered_domains: discovered.length,
       total_crawled_pages: crawledPages,
       total_kept_before_cap: kept.length,
-      target_count: spec.target_count
+      target_count: spec.target_count,
+      trust_proxy_enabled: trustProxyEnabled,
+      trust_proxy_candidates: trustProxyCandidates.length
     },
     firms: final
   };
-
-  const outDir = resolve("data", metroSlug);
-  mkdirSync(outDir, { recursive: true });
 
   const outPath = resolve(outDir, "cpas_raw.json");
   writeFileSync(outPath, JSON.stringify(out, null, 2), "utf-8");
 
   console.log(`✅ Wrote ${final.length} firms → ${outPath}`);
+  console.log(
+    `Discovered domains: ${discovered.length}, Crawled pages: ${crawledPages}, Kept: ${kept.length}`
+  );
 }
 
-main().catch((err) => {
-  console.error(err);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
