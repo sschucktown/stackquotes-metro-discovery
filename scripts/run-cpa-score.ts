@@ -7,85 +7,83 @@ import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
 
 type RawCpaCandidate = {
   firm_name: string;
-  domain: string;
-  url: string;
-  source_query: string;
-  language: "en" | "es";
+  domain?: string;
+  home_url?: string;
+  source_url: string;
+  metro: string;
 };
 
 type ScoredCpa = RawCpaCandidate & {
   score: number;
   keep: boolean;
-  spanish_detected: boolean;
   reasons: string[];
+  signals: any;
 };
 
+const RAW_PATH = "data/cpas_raw.json";
+const OUT_PATH = "data/cpas_scored.json";
+
+async function scoreOne(
+  cpa: RawCpaCandidate,
+  limiter: RateLimiter
+): Promise<ScoredCpa | null> {
+  const url = cpa.home_url || cpa.source_url;
+  if (!url) return null;
+
+  const res = await fetchHtml(url, limiter, {
+    timeoutMs: 20000,
+    maxRetries: 2
+  });
+
+  if (!res.ok || !res.html) return null;
+
+  const extracted = extractFromHtml(res.html);
+
+  // Spanish parity: DO NOT discard Spanish pages
+  const combinedText = [
+    extracted.title,
+    extracted.h1,
+    extracted.text
+  ].join("\n");
+
+  const evalResult = evaluateCpaSite(combinedText);
+
+  return {
+    ...cpa,
+    score: evalResult.score,
+    keep: evalResult.keep,
+    reasons: evalResult.reasons,
+    signals: evalResult.signals
+  };
+}
+
 async function main() {
-  const inPath = path.join("data", "houston", "cpas_raw.json");
-  if (!fs.existsSync(inPath)) {
-    throw new Error("Missing cpas_raw.json. Run run-cpa-search first.");
+  if (!fs.existsSync(RAW_PATH)) {
+    throw new Error(`Missing input file: ${RAW_PATH}`);
   }
 
   const raw: RawCpaCandidate[] = JSON.parse(
-    fs.readFileSync(inPath, "utf-8")
+    fs.readFileSync(RAW_PATH, "utf-8")
   );
 
   const limiter = new RateLimiter(800);
-  const scored: ScoredCpa[] = [];
+  const out: ScoredCpa[] = [];
 
   for (const cpa of raw) {
-    const homeUrl = `https://${cpa.domain}`;
-    const res = await fetchHtml(homeUrl, limiter, {
-      timeoutMs: 20000,
-      maxRetries: 1
-    });
-
-    if (!res.ok || !res.html) continue;
-
-    const extracted = extractFromHtml(res.html);
-    const combinedText = [
-      extracted.title,
-      extracted.h1,
-      extracted.text
-    ].join("\n");
-
-    const evalResult = evaluateCpaSite(combinedText);
-
-    scored.push({
-      ...cpa,
-      score: evalResult.score,
-      keep: evalResult.keep,
-      spanish_detected: evalResult.signals.spanish_detected,
-      reasons: evalResult.reasons
-    });
+    try {
+      const scored = await scoreOne(cpa, limiter);
+      if (scored) out.push(scored);
+    } catch (e) {
+      console.error("Scoring failed for", cpa.firm_name, e);
+    }
   }
 
-  const keepEn = scored.filter(
-    (c) => c.keep && !c.spanish_detected
-  );
-  const keepEs = scored.filter(
-    (c) => c.keep && c.spanish_detected
-  );
+  fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
+  fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2));
 
-  const output = {
-    summary: {
-      total_raw: raw.length,
-      total_scored: scored.length,
-      keep_en: keepEn.length,
-      keep_es: keepEs.length,
-      parity_met: keepEs.length >= 5
-    },
-    keep_en: keepEn.sort((a, b) => b.score - a.score),
-    keep_es: keepEs.sort((a, b) => b.score - a.score)
-  };
-
-  fs.writeFileSync(
-    path.join("data", "houston", "cpas_scored.json"),
-    JSON.stringify(output, null, 2)
+  console.log(
+    `Scored ${out.length} CPAs → ${OUT_PATH}`
   );
-
-  console.log("CPA scoring complete.");
-  console.log(output.summary);
 }
 
 main().catch((err) => {
