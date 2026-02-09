@@ -2,10 +2,9 @@
   "name": "stackquotes-metro-discovery",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "run:cpa": "node --enable-source-maps dist/scripts/run-cpa.js"
+    "run:cpa": "node dist/scripts/run-cpa.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
