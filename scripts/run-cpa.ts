@@ -6,7 +6,7 @@ import { duckDuckGoSearch } from "./core/searchDuckDuckGo";
 import { fetchHtml } from "./core/fetchPage";
 import { extractFromHtml } from "./core/extractText";
 import { evaluateCpaSite } from "./evaluators/evaluateCpa";
-import { mineTrustProxyCandidates } from "./trust-proxy";
+import { mineTrustProxyCandidates } from "./trust-proxy/index";
 
 /* ---------- types ---------- */
 
