@@ -3,31 +3,26 @@
   "category": "cpa",
   "language": "en",
   "target_raw_results": 50,
-
   "search_queries": [
     "construction CPA Houston",
     "construction accounting firm Houston",
     "contractor CPA Houston",
     "contractor accounting Houston",
-
     "job costing CPA Houston",
     "WIP accounting CPA Houston",
     "progress billing CPA Houston",
     "retainage accounting CPA Houston",
     "construction bookkeeping Houston",
     "contractor bookkeeping Houston",
-
     "roofing contractor CPA Houston",
     "HVAC contractor CPA Houston",
     "plumbing contractor CPA Houston",
     "electrical contractor CPA Houston",
     "solar contractor CPA Houston",
-
     "CPA firm serving contractors Houston",
     "accountant for construction companies Houston",
     "CPA for trades Houston"
   ],
-
   "spanish_parity": {
     "enabled": true,
     "language": "es",
@@ -39,7 +34,6 @@
       "CPA para construcción Houston"
     ]
   },
-
   "filters": {
     "exclude_domains_containing": [
       "yelp.com",
@@ -55,7 +49,6 @@
     "require_website": true,
     "require_local_presence": true
   },
-
   "scoring_weights": {
     "construction_language": 3,
     "contractor_language": 3,
@@ -67,7 +60,6 @@
     "generic_small_business_only": -3,
     "consumer_tax_only": -4
   },
-
   "output": {
     "raw_path": "data/houston/cpas_raw.json",
     "scored_path": "data/houston/cpas_scored.json"
