@@ -1,222 +1,253 @@
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { RateLimiter } from "./core/rateLimit.js";
-import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
-import { fetchHtml } from "./core/fetchPage.js";
-import { extractFromHtml } from "./core/extractText.js";
-import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
+export type CpaSignals = {
+  cpa_identity_present: boolean;
+  construction_language: boolean;
+  contractor_language: boolean;
 
-type RunSpec = {
-  metro: string;
-  category: "CPA";
-  target_count: number; // 45
-  search_provider: "duckduckgo";
-  max_results_per_query: number; // 30+
-  metro_slug?: string;
+  job_costing: boolean;
+  wip: boolean;
+  percentage_of_completion: boolean;
+  progress_billing: boolean;
+  retainage: boolean;
+  change_orders: boolean;
 
-  // Two-pass discovery
-  search_queries_pass1: string[]; // CPA/construction/accounting identity
-  search_queries_pass2: string[]; // bookkeeping/trade terms + Spanish-first surface
+  bookkeeping_language: boolean;
+  quickbooks_language: boolean;
+
+  trade_mentions: string[];
+  spanish_detected: boolean;
+
+  all_small_businesses_language: boolean;
+  individual_tax_focus: boolean;
+
+  national_firm_marketing: boolean;
+  directory_or_list_site: boolean;
 };
 
-type FirmCandidate = {
-  domain: string;
-  homeUrl: string;
-  bestTitle: string;
-  sourceQueries: string[];
-  discoveredUrls: string[];
+export type CpaEval = {
+  keep: boolean;
+  score: number;
+  reasons: string[];
+  signals: CpaSignals;
 };
 
-function slugifyMetro(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[–—]/g, "-")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+function hasAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(text));
 }
 
-function normalizeDomain(u: string): string {
-  try {
-    const url = new URL(u);
-    return url.hostname.replace(/^www\./, "").toLowerCase();
-  } catch {
-    return u.toLowerCase();
-  }
+function countHits(text: string, patterns: RegExp[]): number {
+  let n = 0;
+  for (const p of patterns) if (p.test(text)) n++;
+  return n;
 }
 
-/**
- * Convert any deep link into a stable homepage URL:
- * scheme://host/
- */
-function toHomeUrl(u: string): string | null {
-  try {
-    const url = new URL(u);
-    url.pathname = "/";
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Known non-firm domains that should never be considered candidates.
- * (Keep this short and obvious; evaluator handles the rest.)
- */
-function isBannedDomain(domain: string): boolean {
-  const banned = [
-    "yelp.com",
-    "facebook.com",
-    "linkedin.com",
-    "yellowpages.com",
-    "angi.com",
-    "thumbtack.com",
-    "clutch.co",
-    "expertise.com",
-    "bbb.org",
-    "mapquest.com",
-    "chamberofcommerce.com",
-    "dnb.com",
-    "opencorporates.com",
-    "constructionexec.com",
-    "foundationsupportworks.com",
-    "foundationsoftware.com"
-  ];
-  return banned.some((b) => domain === b || domain.endsWith(`.${b}`));
-}
-
-function pickCandidateName(fallbackTitle: string, extractedTitle: string, extractedH1: string): string {
-  const candidates = [extractedH1, extractedTitle, fallbackTitle]
-    .map((x) => (x || "").trim())
-    .filter(Boolean);
-
-  const name = candidates[0] ?? "Unknown Firm";
-  return name.replace(/\s+\|\s+.*$/, "").replace(/\s+-\s+.*$/, "").trim();
-}
-
-/**
- * Pick up to 2 additional pages that tend to contain "real" service language.
- * Keep crawl light.
- */
-function pickExtraPageLinks(baseUrl: string, links: Array<{ href: string; text: string }>): string[] {
-  const wanted = [
-    "services",
-    "service",
-    "industries",
-    "industry",
-    "construction",
-    "contractor",
-    "contractors",
-    "builders",
-    "bookkeeping",
-    "outsourced",
-    "about",
-    "who we are"
+function detectTrades(text: string): string[] {
+  const trades = [
+    "roofing",
+    "hvac",
+    "plumbing",
+    "electrical",
+    "solar",
+    "siding",
+    "windows",
+    "gutters",
+    "concrete",
+    "fencing",
+    "deck",
+    "patio",
+    "flooring",
+    "drywall",
+    "painting",
+    "remodel",
+    "kitchen",
+    "bathroom"
   ];
 
-  const chosen: string[] = [];
+  const found = new Set<string>();
+  const lower = text.toLowerCase();
 
-  for (const l of links) {
-    const t = (l.text || "").toLowerCase();
-    const h = (l.href || "").trim();
-    if (!h) continue;
-
-    if (!wanted.some((w) => t.includes(w))) continue;
-
-    try {
-      const abs = new URL(h, baseUrl).toString();
-      if (abs.startsWith("mailto:") || abs.startsWith("tel:")) continue;
-
-      // avoid obvious junk query params
-      const u = new URL(abs);
-      u.hash = "";
-      chosen.push(u.toString());
-    } catch {
-      // ignore
-    }
-
-    if (chosen.length >= 2) break;
+  for (const t of trades) {
+    if (lower.includes(t)) found.add(t);
   }
 
-  return Array.from(new Set(chosen));
+  return Array.from(found).slice(0, 12);
 }
 
-/**
- * Run one "pass" of queries and add candidates domain-first.
- */
-async function runDiscoveryPass(
-  passName: "pass1" | "pass2",
-  queries: string[],
-  spec: RunSpec,
-  searchLimiter: RateLimiter,
-  candidatesByDomain: Map<string, FirmCandidate>
-) {
-  for (const q of queries) {
-    const hits = await duckDuckGoSearch(q, searchLimiter, spec.max_results_per_query);
+export function evaluateCpaSite(combinedText: string): CpaEval {
+  const text = combinedText.toLowerCase();
 
-    for (const h of hits) {
-      const domain = normalizeDomain(h.url);
-      if (!domain) continue;
-      if (isBannedDomain(domain)) continue;
+  const cpaIdentityPats = [
+    /\bcertified\s+public\s+accountant\b/i,
+    /\bcpa(s)?\b/i,
+    /\baccounting\s+firm\b/i,
+    /\baccountants?\b/i
+  ];
 
-      const homeUrl = toHomeUrl(h.url);
-      if (!homeUrl) continue;
+  const constructionPats = [
+    /\bconstruction\b/i,
+    /\bcontractor(s)?\b/i,
+    /\bsubcontract(or|ing)\b/i,
+    /\bbuilder(s)?\b/i,
+    /\btrade(s)?\b/i
+  ];
 
-      const existing = candidatesByDomain.get(domain);
-      if (existing) {
-        existing.sourceQueries.push(h.sourceQuery);
-        existing.discoveredUrls.push(h.url);
-        // prefer "better" title if we only have a placeholder
-        if (existing.bestTitle.length < 5 && h.title.length > existing.bestTitle.length) {
-          existing.bestTitle = h.title;
-        }
-      } else {
-        candidatesByDomain.set(domain, {
-          domain,
-          homeUrl,
-          bestTitle: h.title,
-          sourceQueries: [h.sourceQuery],
-          discoveredUrls: [h.url]
-        });
-      }
-    }
+  const jobCostingPats = [
+    /\bjob\s*cost(ing)?\b/i,
+    /\bcost\s*code(s)?\b/i,
+    /\bjob[-\s]?costing\b/i
+  ];
 
-    // No early break here—Houston needs breadth.
-    // We cap later after evaluation.
-    console.log(`[${passName}] query="${q}" hits=${hits.length} domains=${candidatesByDomain.size}`);
-  }
+  const wipPats = [/\bwip\b/i, /\bwork[-\s]?in[-\s]?progress\b/i];
+  const pocPats = [/\bpercentage[-\s]?of[-\s]?completion\b/i, /\bcompleted[-\s]?contract\b/i];
+  const progressBillingPats = [/\bprogress\s*billing\b/i];
+  const retainagePats = [/\bretainage\b/i, /\bretention\b/i];
+  const changeOrderPats = [/\bchange\s*order(s)?\b/i];
+
+  const bookkeepingPats = [/\bbookkeeping\b/i, /\bbookkeeper(s)?\b/i, /\boutsource(d)?\s+accounting\b/i];
+  const quickbooksPats = [/\bquickbooks\b/i, /\bqb\b/i];
+
+  const spanishPats = [
+    /\bse\s+habla\s+español\b/i,
+    /\bespañol\b/i,
+    /\bservicios?\s+en\s+español\b/i,
+    /lang\s*=\s*["']es["']/i,
+    /\/es(\/|$)/i
+  ];
+
+  const allSmallBizPats = [
+    /\ball\s+small\s+business(es)?\b/i,
+    /\bany\s+small\s+business\b/i,
+    /\bwe\s+serve\s+all\s+industries\b/i,
+    /\ball\s+industries\b/i
+  ];
+
+  const individualTaxHeavyPats = [
+    /\bpersonal\s+tax\b/i,
+    /\bindividual\s+tax\b/i,
+    /\b1040\b/i,
+    /\btax\s+prep(aration)?\b/i
+  ];
+
+  // Suppress national/regional “construction industry page” marketing
+  const nationalFirmPats = [
+    /\bnationwide\b/i,
+    /\bserving\s+clients\s+across\s+the\s+country\b/i,
+    /\bmultiple\s+offices\b/i,
+    /\boffices?\s+in\s+\d+\s+states\b/i,
+    /\bglobal\b/i,
+    /\binternational\b/i,
+    /\btop\s+\d+\b.*\bfirm\b/i
+  ];
+
+  // Directory/list sites that should not be contact targets
+  const directoryPats = [
+    /\btop\s+\d+\b/i,
+    /\bbest\s+of\b/i,
+    /\branking(s)?\b/i,
+    /\bdirectory\b/i,
+    /\blist\b/i,
+    /\bfind\s+a\b/i
+  ];
+
+  const cpa_identity_present = hasAny(text, cpaIdentityPats);
+  const construction_language = hasAny(text, constructionPats);
+  const contractor_language = /\bcontractor(s)?\b/i.test(text);
+
+  const job_costing = hasAny(text, jobCostingPats);
+  const wip = hasAny(text, wipPats);
+  const percentage_of_completion = hasAny(text, pocPats);
+  const progress_billing = hasAny(text, progressBillingPats);
+  const retainage = hasAny(text, retainagePats);
+  const change_orders = hasAny(text, changeOrderPats);
+
+  const bookkeeping_language = hasAny(text, bookkeepingPats);
+  const quickbooks_language = hasAny(text, quickbooksPats);
+
+  const spanish_detected = hasAny(text, spanishPats);
+  const all_small_businesses_language = hasAny(text, allSmallBizPats);
+
+  const indTaxHits = countHits(text, individualTaxHeavyPats);
+  const constructionDepthHits =
+    (job_costing ? 1 : 0) +
+    (wip ? 1 : 0) +
+    (percentage_of_completion ? 1 : 0) +
+    (progress_billing ? 1 : 0) +
+    (retainage ? 1 : 0) +
+    (change_orders ? 1 : 0) +
+    (bookkeeping_language ? 1 : 0);
+
+  const individual_tax_focus = indTaxHits >= 2 && constructionDepthHits === 0;
+
+  const national_firm_marketing = hasAny(text, nationalFirmPats);
+  const directory_or_list_site = hasAny(text, directoryPats) && !cpa_identity_present;
+
+  const trade_mentions = detectTrades(text);
+
+  // Kill rules (mechanical)
+  const reasons: string[] = [];
+
+  if (!cpa_identity_present) reasons.push("No CPA/accounting firm identity detected");
+  if (!construction_language) reasons.push("No construction/contractor language detected");
+  if (all_small_businesses_language) reasons.push("Generic 'all small businesses/all industries' positioning");
+  if (individual_tax_focus) reasons.push("Appears personal-tax dominant with no construction depth");
+  if (national_firm_marketing) reasons.push("National/regional firm marketing language (low local trust leverage)");
+  if (directory_or_list_site) reasons.push("Directory/list site (not a firm)");
+
+  const killed =
+    !cpa_identity_present ||
+    !construction_language ||
+    all_small_businesses_language ||
+    individual_tax_focus ||
+    national_firm_marketing ||
+    directory_or_list_site;
+
+  // Scoring (ranking only)
+  let score = 0;
+  if (cpa_identity_present) score += 20;
+  if (construction_language) score += 20;
+  if (contractor_language) score += 5;
+
+  if (job_costing) score += 20;
+  if (wip) score += 18;
+  if (percentage_of_completion) score += 18;
+  if (progress_billing) score += 10;
+  if (retainage) score += 8;
+  if (change_orders) score += 10;
+
+  if (bookkeeping_language) score += 10;
+  if (quickbooks_language) score += 6;
+
+  if (trade_mentions.length > 0) score += Math.min(12, trade_mentions.length * 2);
+
+  if (spanish_detected) score += 6;
+
+  if (all_small_businesses_language) score -= 30;
+  if (individual_tax_focus) score -= 25;
+  if (national_firm_marketing) score -= 40;
+
+  const signals: CpaSignals = {
+    cpa_identity_present,
+    construction_language,
+    contractor_language,
+    job_costing,
+    wip,
+    percentage_of_completion,
+    progress_billing,
+    retainage,
+    change_orders,
+    bookkeeping_language,
+    quickbooks_language,
+    trade_mentions,
+    spanish_detected,
+    all_small_businesses_language,
+    individual_tax_focus,
+    national_firm_marketing,
+    directory_or_list_site
+  };
+
+  return {
+    keep: !killed,
+    score,
+    reasons,
+    signals
+  };
 }
-
-async function main() {
-  const specPath = process.env.RUN_SPEC_PATH || "scripts/specs/houston.cpa.json";
-  const raw = readFileSync(specPath, "utf-8");
-  const spec = JSON.parse(raw) as RunSpec;
-
-  if (spec.category !== "CPA") throw new Error("This runner only supports category=CPA");
-
-  const metroSlug = spec.metro_slug ?? slugifyMetro(spec.metro);
-
-  // Rate limits: DDG HTML is unofficial—be polite.
-  const searchLimiter = new RateLimiter(950); // ~1 req/sec
-  const crawlLimiter = new RateLimiter(750);  // modest, still polite
-
-  // 1) Two-pass domain-first discovery
-  const candidatesByDomain = new Map<string, FirmCandidate>();
-
-  await runDiscoveryPass("pass1", spec.search_queries_pass1, spec, searchLimiter, candidatesByDomain);
-  await runDiscoveryPass("pass2", spec.search_queries_pass2, spec, searchLimiter, candidatesByDomain);
-
-  const discovered = Array.from(candidatesByDomain.values());
-
-  // 2) Crawl + evaluate (mechanical filtering)
-  const kept: any[] = [];
-  let crawledPages = 0;
-
-  for (const c of discovered) {
-    // If we already have enough kept firms, we still finish crawling a bit more for quality,
-    // but we don't need to exhaust everything.
-    if (kept.length >= spec.target_count * 2) break;
-
-    const homepage = await fetchHtml(c.homeUrl, crawlLimiter, {
