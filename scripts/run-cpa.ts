@@ -1,12 +1,12 @@
-import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync, readFileSync } from "fs";
+import { resolve } from "path";
 
 import { RateLimiter } from "./core/rateLimit";
 import { duckDuckGoSearch } from "./core/searchDuckDuckGo";
 import { fetchHtml } from "./core/fetchPage";
 import { extractFromHtml } from "./core/extractText";
 import { evaluateCpaSite } from "./evaluators/evaluateCpa";
-import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy.ts";
+import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy";
 
 /* ---------- types ---------- */
 
