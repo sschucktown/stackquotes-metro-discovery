@@ -4,6 +4,7 @@
   "target_count": 45,
   "search_provider": "duckduckgo",
   "max_results_per_query": 35,
+
   "search_queries_pass1": [
     "construction CPA Houston",
     "construction accounting firm Houston",
@@ -15,31 +16,64 @@
     "percentage of completion CPA Houston",
     "progress billing CPA Houston",
     "retainage accounting CPA Houston",
-    "outsourced accounting contractors Houston CPA",
-    "construction tax planning CPA Houston",
-    "construction accounting services Houston CPA",
-    "CPA firm construction industry Houston",
-    "accounting firm contractors Houston CPA"
+    "construction tax planning CPA Houston"
   ],
+
   "search_queries_pass2": [
-    "construction bookkeeping Houston",
-    "contractor bookkeeping Houston",
-    "job cost bookkeeping Houston",
     "construction accountant Houston",
     "contractor accountant Houston",
     "roofing accountant Houston",
     "HVAC accountant Houston",
     "plumbing accountant Houston",
     "electrical contractor accountant Houston",
-    "solar contractor accountant Houston",
-    "remodeling contractor accountant Houston",
     "construction payroll services Houston",
-    "QuickBooks contractor accountant Houston",
     "QuickBooks construction accountant Houston",
-    "contadores Houston construccion",
-    "contadores construction Houston",
-    "servicios contables contratistas Houston",
     "CPA Houston se habla español",
-    "contadores Houston se habla español"
-  ]
+    "contadores Houston construccion"
+  ],
+
+  "search_queries_pass3": [
+    "construction bookkeeping Houston",
+    "contractor bookkeeping Houston",
+    "outsourced accounting contractors Houston",
+    "job cost bookkeeping Houston",
+    "bookkeeper for contractors Houston",
+    "QuickBooks contractor bookkeeping Houston",
+    "construction accounting services Houston",
+    "servicios contables contratistas Houston",
+    "bookkeeping construccion Houston",
+    "contadores Houston servicios contables"
+  ],
+
+  "trust_proxy": {
+    "enabled": true,
+    "max_candidates_total": 20,
+    "max_candidates_per_source": {
+      "supplier": 10,
+      "association": 10,
+      "expert": 5
+    },
+    "queries": {
+      "supplier": [
+        "\"Houston\" \"presented by\" CPA contractor",
+        "\"Houston\" \"sponsored by\" CPA contractor",
+        "\"Houston\" supplier \"contractor\" accounting",
+        "\"Houston\" \"roofing\" \"tax\" seminar CPA",
+        "\"Houston\" \"HVAC\" \"accounting\" workshop"
+      ],
+      "association": [
+        "filetype:pdf Houston contractor tax CPA",
+        "filetype:pdf Houston construction accounting seminar",
+        "\"Houston\" \"AGC\" \"CPA\"",
+        "\"Houston\" \"ABC\" \"accounting\" contractors",
+        "\"Houston\" \"PHCC\" \"CPA\""
+      ],
+      "expert": [
+        "\"construction\" \"CPA\" \"Houston\" \"expert\"",
+        "\"forensic accountant\" \"construction\" Houston",
+        "\"CPA\" \"construction\" Houston \"litigation\"",
+        "\"job costing\" \"expert witness\" Houston CPA"
+      ]
+    }
+  }
 }
