@@ -1,12 +1,14 @@
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { RateLimiter } from "./core/rateLimit";
-import { duckDuckGoSearch } from "./core/searchDuckDuckGo";
-import { fetchHtml } from "./core/fetchPage";
-import { extractFromHtml } from "./core/extractText";
-import { evaluateCpaSite } from "./evaluators/evaluateCpa";
-import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy";
 
+import { RateLimiter } from "./core/rateLimit.js";
+import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
+import { fetchHtml } from "./core/fetchPage.js";
+import { extractFromHtml } from "./core/extractText.js";
+import { evaluateCpaSite } from "./evaluators/evaluateCpa.js";
+import { mineTrustProxyCandidates } from "./trust-proxy/mineTrustProxy.js";
+
+/* ---------- types ---------- */
 
 type TrustProxySpec = {
   enabled: boolean;
@@ -46,6 +48,8 @@ type FirmCandidate = {
   discoveredUrls: string[];
   origin: "search" | "trust-proxy";
 };
+
+/* ---------- helpers ---------- */
 
 function slugifyMetro(s: string): string {
   return s
@@ -91,31 +95,35 @@ function isBannedDomain(domain: string): boolean {
     "mapquest.com",
     "chamberofcommerce.com",
     "dnb.com",
-    "opencorporates.com",
-    "constructionexec.com",
-    "foundationsoftware.com"
+    "opencorporates.com"
   ];
   return banned.some((b) => domain === b || domain.endsWith(`.${b}`));
 }
 
-function pickCandidateName(fallbackTitle: string, extractedTitle: string, extractedH1: string): string {
+function pickCandidateName(
+  fallbackTitle: string,
+  extractedTitle: string,
+  extractedH1: string
+): string {
   const candidates = [extractedH1, extractedTitle, fallbackTitle]
     .map((x) => (x || "").trim())
     .filter(Boolean);
 
-  const name = candidates[0] ?? "Unknown Firm";
-  return name.replace(/\s+\|\s+.*$/, "").replace(/\s+-\s+.*$/, "").trim();
+  return (candidates[0] ?? "Unknown Firm")
+    .replace(/\s+\|\s+.*$/, "")
+    .replace(/\s+-\s+.*$/, "")
+    .trim();
 }
 
+/* ---------- discovery ---------- */
+
 async function runDiscoveryPass(
-  passName: "pass1" | "pass2" | "pass3",
+  passName: string,
   queries: string[],
   spec: RunSpec,
   searchLimiter: RateLimiter,
   candidatesByDomain: Map<string, FirmCandidate>
 ) {
-  if (!Array.isArray(queries)) return;
-
   for (const q of queries) {
     const hits = await duckDuckGoSearch(q, searchLimiter, spec.max_results_per_query);
 
@@ -125,8 +133,7 @@ async function runDiscoveryPass(
       if (!url) continue;
 
       const domain = normalizeDomain(url);
-      if (!domain) continue;
-      if (isBannedDomain(domain)) continue;
+      if (!domain || isBannedDomain(domain)) continue;
 
       const homeUrl = toHomeUrl(url);
       if (!homeUrl) continue;
@@ -148,162 +155,118 @@ async function runDiscoveryPass(
       }
     }
 
-    console.log(`[${passName}] query="${q}" → domains=${candidatesByDomain.size}`);
+    console.log(`[${passName}] ${q} → domains=${candidatesByDomain.size}`);
   }
 }
+
+/* ---------- main ---------- */
 
 async function main() {
   const specPath = process.env.RUN_SPEC_PATH || "scripts/specs/houston.cpa.json";
   const spec = JSON.parse(readFileSync(specPath, "utf-8")) as RunSpec;
 
-  if (spec.category !== "CPA") throw new Error("This runner only supports category=CPA");
-  if (!spec.search_queries_pass1 || !spec.search_queries_pass2) {
-    throw new Error("Spec must define search_queries_pass1 and search_queries_pass2");
-  }
-
   const metroSlug = spec.metro_slug ?? slugifyMetro(spec.metro);
+  const outDir = resolve("data", metroSlug);
+  mkdirSync(outDir, { recursive: true });
 
   const searchLimiter = new RateLimiter(950);
   const crawlLimiter = new RateLimiter(750);
 
   const candidatesByDomain = new Map<string, FirmCandidate>();
 
-  // Phase 1-3 discovery
-  await runDiscoveryPass("pass1", spec.search_queries_pass1, spec, searchLimiter, candidatesByDomain);
-  await runDiscoveryPass("pass2", spec.search_queries_pass2, spec, searchLimiter, candidatesByDomain);
+  await runDiscoveryPass(
+    "pass1",
+    spec.search_queries_pass1,
+    spec,
+    searchLimiter,
+    candidatesByDomain
+  );
+
+  await runDiscoveryPass(
+    "pass2",
+    spec.search_queries_pass2,
+    spec,
+    searchLimiter,
+    candidatesByDomain
+  );
+
   if (spec.search_queries_pass3?.length) {
-    await runDiscoveryPass("pass3", spec.search_queries_pass3, spec, searchLimiter, candidatesByDomain);
+    await runDiscoveryPass(
+      "pass3",
+      spec.search_queries_pass3,
+      spec,
+      searchLimiter,
+      candidatesByDomain
+    );
   }
 
-  // Phase 4 trust-proxy mining
-  const trustProxyEnabled = !!spec.trust_proxy?.enabled;
-  const trustProxyCandidates = trustProxyEnabled
-    ? await mineTrustProxyCandidates(spec.metro, spec.trust_proxy as any)
+  /* ---- Phase 4 trust proxy ---- */
+
+  const trustProxyCandidates = spec.trust_proxy?.enabled
+    ? await mineTrustProxyCandidates(spec.metro, spec.trust_proxy)
     : [];
 
-  // Write trust-proxy raw file (always if enabled)
-  const outDir = resolve("data", metroSlug);
-  mkdirSync(outDir, { recursive: true });
+  writeFileSync(
+    resolve(outDir, "trust_proxy_raw.json"),
+    JSON.stringify(trustProxyCandidates, null, 2),
+    "utf-8"
+  );
 
-  if (trustProxyEnabled) {
-    const tpPath = resolve(outDir, "trust_proxy_raw.json");
-    writeFileSync(
-      tpPath,
-      JSON.stringify(
-        {
-          meta: {
-            metro: spec.metro,
-            metro_slug: metroSlug,
-            generated_at: new Date().toISOString(),
-            total_candidates: trustProxyCandidates.length
-          },
-          candidates: trustProxyCandidates
-        },
-        null,
-        2
-      ),
-      "utf-8"
-    );
-    console.log(`Wrote trust proxy candidates → ${tpPath}`);
-  }
-
-  // Convert trust-proxy candidates into firm candidates (domain-first)
   for (const tp of trustProxyCandidates as any[]) {
-    const sourceUrl = tp.source_url || "";
-    const homeUrl = tp.home_url || (sourceUrl ? toHomeUrl(sourceUrl) : "");
-    const domain = tp.domain || (sourceUrl ? normalizeDomain(sourceUrl) : "");
-
-    if (!domain) continue;
-    if (isBannedDomain(domain)) continue;
-
-    const resolvedHome = homeUrl || (sourceUrl ? toHomeUrl(sourceUrl) : "");
-    if (!resolvedHome) continue;
+    const domain = tp.domain || normalizeDomain(tp.source_url);
+    const homeUrl = tp.home_url || toHomeUrl(tp.source_url);
+    if (!domain || !homeUrl || isBannedDomain(domain)) continue;
 
     const existing = candidatesByDomain.get(domain);
-    const label = `trust-proxy:${tp.source}`;
-
     if (existing) {
-      existing.sourceQueries.push(label);
-      if (sourceUrl) existing.discoveredUrls.push(sourceUrl);
-      if (existing.bestTitle.length < (tp.firm_name || "").length) {
-        existing.bestTitle = tp.firm_name || existing.bestTitle;
-      }
+      existing.sourceQueries.push(`trust-proxy:${tp.source}`);
     } else {
       candidatesByDomain.set(domain, {
         domain,
-        homeUrl: resolvedHome,
+        homeUrl,
         bestTitle: tp.firm_name || domain,
-        sourceQueries: [label],
-        discoveredUrls: sourceUrl ? [sourceUrl] : [],
+        sourceQueries: [`trust-proxy:${tp.source}`],
+        discoveredUrls: [tp.source_url],
         origin: "trust-proxy"
       });
     }
   }
 
-  const discovered = Array.from(candidatesByDomain.values());
+  /* ---- crawl + evaluate ---- */
 
-  // Crawl + evaluate
   const kept: any[] = [];
-  let crawledPages = 0;
 
-  for (const c of discovered) {
+  for (const c of candidatesByDomain.values()) {
     if (kept.length >= spec.target_count * 2) break;
 
-    const homepage = await fetchHtml(c.homeUrl, crawlLimiter, { timeoutMs: 20000, maxRetries: 2 });
-    crawledPages++;
+    const page = await fetchHtml(c.homeUrl, crawlLimiter);
+    if (!page.ok || !page.html) continue;
 
-    if (!homepage.ok || !homepage.html) continue;
-
-    const extracted = extractFromHtml(homepage.html);
-    const combinedText = extracted.text;
-
-    const evaled = evaluateCpaSite(combinedText);
+    const extracted = extractFromHtml(page.html);
+    const evaled = evaluateCpaSite(extracted.text);
     if (!evaled.keep) continue;
 
-    const firmName = pickCandidateName(c.bestTitle, extracted.title, extracted.h1);
-
     kept.push({
-      name: firmName,
-      url: homepage.url,
+      name: pickCandidateName(c.bestTitle, extracted.title, extracted.h1),
       domain: c.domain,
-      metro: spec.metro,
-      category: spec.category,
+      url: page.url,
       origin: c.origin,
-      signals: evaled.signals,
       score: evaled.score,
+      signals: evaled.signals,
       reasons: evaled.reasons,
-      source_queries: Array.from(new Set(c.sourceQueries)),
-      discovered_urls_sample: c.discoveredUrls.slice(0, 5)
+      source_queries: Array.from(new Set(c.sourceQueries))
     });
   }
 
   kept.sort((a, b) => b.score - a.score);
-  const final = kept.slice(0, spec.target_count);
 
-  const out = {
-    meta: {
-      metro: spec.metro,
-      metro_slug: metroSlug,
-      category: spec.category,
-      generated_at: new Date().toISOString(),
-      search_provider: spec.search_provider,
-      total_discovered_domains: discovered.length,
-      total_crawled_pages: crawledPages,
-      total_kept_before_cap: kept.length,
-      target_count: spec.target_count,
-      trust_proxy_enabled: trustProxyEnabled,
-      trust_proxy_candidates: trustProxyCandidates.length
-    },
-    firms: final
-  };
-
-  const outPath = resolve(outDir, "cpas_raw.json");
-  writeFileSync(outPath, JSON.stringify(out, null, 2), "utf-8");
-
-  console.log(`✅ Wrote ${final.length} firms → ${outPath}`);
-  console.log(
-    `Discovered domains: ${discovered.length}, Crawled pages: ${crawledPages}, Kept: ${kept.length}`
+  writeFileSync(
+    resolve(outDir, "cpas_raw.json"),
+    JSON.stringify(kept.slice(0, spec.target_count), null, 2),
+    "utf-8"
   );
+
+  console.log(`✅ Houston CPA discovery complete (${kept.length} evaluated)`);
 }
 
 main().catch((e) => {
