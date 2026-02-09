@@ -1,0 +1,22 @@
+{
+  "metro": "Houston",
+  "max_per_query": 15,
+
+  "english_queries": [
+    "Houston construction CPA",
+    "Houston contractor accounting firm",
+    "Houston job costing CPA",
+    "CPA for contractors Houston",
+    "Houston WIP accounting firm",
+    "Houston construction accounting services"
+  ],
+
+  "spanish_queries": [
+    "contador contratistas Houston",
+    "contador construcción Houston",
+    "contabilidad contratistas Houston",
+    "CPA construcción Houston español",
+    "servicios contables contratistas Houston",
+    "contador obras Houston"
+  ]
+}
