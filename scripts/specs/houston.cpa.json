@@ -1,79 +1,79 @@
 {
-  "metro": "Houston–The Woodlands–Sugar Land, TX",
-  "category": "CPA",
-  "target_count": 45,
-  "search_provider": "duckduckgo",
-  "max_results_per_query": 35,
+  "metro": "houston-tx",
+  "category": "cpa",
+  "language": "en",
+  "target_raw_results": 50,
 
-  "search_queries_pass1": [
+  "search_queries": [
+    // --- Tier A: Construction / contractor core ---
     "construction CPA Houston",
     "construction accounting firm Houston",
-    "CPA for contractors Houston",
     "contractor CPA Houston",
-    "builder CPA Houston",
+    "contractor accounting Houston",
+
+    // --- Tier B: Job-costing / WIP language (high signal) ---
     "job costing CPA Houston",
     "WIP accounting CPA Houston",
-    "percentage of completion CPA Houston",
     "progress billing CPA Houston",
     "retainage accounting CPA Houston",
-    "construction tax planning CPA Houston"
-  ],
-
-  "search_queries_pass2": [
-    "construction accountant Houston",
-    "contractor accountant Houston",
-    "roofing accountant Houston",
-    "HVAC accountant Houston",
-    "plumbing accountant Houston",
-    "electrical contractor accountant Houston",
-    "construction payroll services Houston",
-    "QuickBooks construction accountant Houston",
-    "CPA Houston se habla español",
-    "contadores Houston construccion"
-  ],
-
-  "search_queries_pass3": [
     "construction bookkeeping Houston",
     "contractor bookkeeping Houston",
-    "outsourced accounting contractors Houston",
-    "job cost bookkeeping Houston",
-    "bookkeeper for contractors Houston",
-    "QuickBooks contractor bookkeeping Houston",
-    "construction accounting services Houston",
-    "servicios contables contratistas Houston",
-    "bookkeeping construccion Houston",
-    "contadores Houston servicios contables"
+
+    // --- Tier C: Trade-specific CPA language ---
+    "roofing contractor CPA Houston",
+    "HVAC contractor CPA Houston",
+    "plumbing contractor CPA Houston",
+    "electrical contractor CPA Houston",
+    "solar contractor CPA Houston",
+
+    // --- Tier D: Small firm / local phrasing ---
+    "CPA firm serving contractors Houston",
+    "accountant for construction companies Houston",
+    "CPA for trades Houston"
   ],
 
-  "trust_proxy": {
+  "spanish_parity": {
     "enabled": true,
-    "max_candidates_total": 20,
-    "max_candidates_per_source": {
-      "supplier": 10,
-      "association": 10,
-      "expert": 5
-    },
-    "queries": {
-      "supplier": [
-        "\"Houston\" \"presented by\" CPA contractor",
-        "\"Houston\" \"sponsored by\" CPA contractor",
-        "\"Houston\" supplier \"contractor\" accounting",
-        "\"Houston\" \"roofing\" \"tax\" seminar CPA",
-        "\"Houston\" \"HVAC\" \"accounting\" workshop"
-      ],
-      "association": [
-        "filetype:pdf Houston contractor tax CPA",
-        "filetype:pdf Houston construction accounting seminar",
-        "\"Houston\" \"AGC\" \"CPA\"",
-        "\"Houston\" \"ABC\" \"accounting\" contractors",
-        "\"Houston\" \"PHCC\" \"CPA\""
-      ],
-      "expert": [
-        "\"construction\" \"CPA\" \"Houston\" \"expert\"",
-        "\"forensic accountant\" \"construction\" Houston",
-        "\"CPA\" \"construction\" Houston \"litigation\"",
-        "\"job costing\" \"expert witness\" Houston CPA"
-      ]
-    }
+    "language": "es",
+    "search_queries": [
+      "CPA construcción Houston",
+      "contador contratistas Houston",
+      "contabilidad construcción Houston",
+      "contador para contratistas Houston",
+      "CPA para construcción Houston"
+    ]
+  },
+
+  "filters": {
+    "exclude_domains_containing": [
+      "yelp.com",
+      "thumbtack.com",
+      "angi.com",
+      "homeadvisor.com",
+      "clutch.co",
+      "expertise.com",
+      "linkedin.com",
+      "facebook.com",
+      "indeed.com"
+    ],
+    "require_website": true,
+    "require_local_presence": true
+  },
+
+  "scoring_weights": {
+    "construction_language": 3,
+    "contractor_language": 3,
+    "job_costing_mentions": 4,
+    "wip_progress_billing": 4,
+    "retainage_mentions": 3,
+    "trade_specific_language": 2,
+    "spanish_language_support": 2,
+    "generic_small_business_only": -3,
+    "consumer_tax_only": -4
+  },
+
+  "output": {
+    "raw_path": "data/houston/cpas_raw.json",
+    "scored_path": "data/houston/cpas_scored.json"
   }
 }
