@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+        "run:cpa-enrich": "node dist/scripts/run-cpa-enrich.js",
 
     "run:cpa-search": "node dist/scripts/run-cpa-search.js",
     "run:cpa-score": "node dist/scripts/run-cpa-score.js",
