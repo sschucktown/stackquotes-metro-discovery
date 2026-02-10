@@ -1,0 +1,40 @@
+name: CPA Phase 1 Discovery (Wide Net)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run Phase 1 CPA discovery
+        run: node dist/scripts/run-cpa-phase1.js
+
+      - name: Debug output
+        run: |
+          echo "=== DATA DIRECTORY ==="
+          ls -la data || echo "NO data dir"
+          echo ""
+          echo "=== FILE TREE ==="
+          find . -type f | sed 's|^\./||'
+
+      - name: Upload CPA Phase 1 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpa-phase1-output
+          path: data/
