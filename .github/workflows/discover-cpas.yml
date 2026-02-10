@@ -1,32 +1,52 @@
-name: Discover CPAs (Houston)
+name: Discover & Score CPAs (DuckDuckGo)
 
 on:
   workflow_dispatch:
+    inputs:
+      spec_path:
+        description: "Path to CPA discovery spec JSON"
+        required: true
+        default: "scripts/specs/houston.cpa.json"
 
 jobs:
   discover:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Install
+      - name: Install dependencies
         run: npm install
 
       - name: Build
         run: npm run build
 
-      - name: Run CPA search (EN + ES)
-        run: node dist/scripts/run-cpa-search.js
+      # Phase 4A — Discovery (EN + ES)
+      - name: Run CPA discovery
+        env:
+          RUN_SPEC_PATH: ${{ inputs.spec_path }}
+        run: npm run run:cpa-search
 
-      - name: Score CPA sites
-        run: node dist/scripts/run-cpa-score.js
+      # Guardrail — ensure discovery produced files
+      - name: Verify discovery outputs
+        run: |
+          ls -la data
+          test -f data/cpas_raw.en.json
+          test -f data/cpas_raw.es.json
 
-      - name: Upload results
+      # Phase 4B — Scoring
+      - name: Run CPA scoring
+        run: npm run run:cpa-score
+
+      # Artifacts
+      - name: Upload CPA discovery artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: houston-cpa-results
-          path: data/houston/**
+          name: cpa-discovery-output
+          path: data/**
