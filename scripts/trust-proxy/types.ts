@@ -1,12 +1,9 @@
-export type TrustProxySource = "supplier" | "association" | "expert";
+Run npm run build
 
-export type TrustProxyCandidate = {
-  source: TrustProxySource;
-  proxy: string;          // e.g., "AGC Houston", "Supplier event", "Expert listing"
-  firm_name: string;      // best-effort extracted name
-  domain: string;         // normalized domain if available, else ""
-  home_url: string;       // best-effort homepage if available, else ""
-  source_url: string;     // where we found it (search hit or doc)
-  metro: string;
-  evidence: string[];     // short strings explaining why we believe it’s a CPA/accounting firm
-};
+> stackquotes-metro-discovery@0.1.0 build
+> tsc -p tsconfig.json
+
+Error: scripts/run-cpa.ts(9,10): error TS2305: Module '"./trust-proxy/mineTrustProxy.js"' has no exported member 'mineTrustProxyCandidates'.
+Error: scripts/trust-proxy/index.ts(2,10): error TS2305: Module '"./mineTrustProxy.js"' has no exported member 'mineTrustProxyCandidates'.
+Error: scripts/trust-proxy/mineTrustProxy.ts(19,3): error TS2305: Module '"./types.js"' has no exported member 'TrustProxySpec'.
+Error: Process completed with exit code 2.
