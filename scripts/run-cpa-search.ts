@@ -1,22 +1,52 @@
-import fs from "fs";
-import path from "path";
+import fs from "node:fs";
+import path from "node:path";
+
 import { RateLimiter } from "./core/rateLimit.js";
 import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
 
-type SearchSpec = {
+type Lane = "en" | "es";
+
+type DiscoverySpec = {
   metro: string;
-  max_per_query: number;
-  english_queries: string[];
-  spanish_queries: string[];
+  lanes: Lane[];
+  max_results_per_query: number;
+  queries: Record<string, unknown>;
 };
 
 type RawCpaCandidate = {
   firm_name: string;
   domain: string;
-  url: string;
+  home_url: string;
+  source_url: string;
+  metro: string;
+  lane: Lane;
   source_query: string;
-  language: "en" | "es";
 };
+
+const SPEC_PATH =
+  process.env.RUN_SPEC_PATH || "scripts/specs/houston.cpa.json";
+
+const DATA_DIR = "data";
+
+function assertArray(value: unknown, label: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+  for (const v of value) {
+    if (typeof v !== "string") {
+      throw new Error(`${label} must contain only strings`);
+    }
+  }
+  return value;
+}
+
+function cleanFirmName(input: string): string {
+  return input
+    .replace(/\b(cpa|cpas|accounting|accountants?)\b/gi, "")
+    .replace(/\b(llc|llp|pllc|pc|inc|ltd)\b/gi, "")
+    .replace(/[-–|].*$/, "")
+    .trim();
+}
 
 function normalizeDomain(url: string): string {
   try {
@@ -27,33 +57,48 @@ function normalizeDomain(url: string): string {
   }
 }
 
-function inferFirmName(title: string): string {
-  return title
-    .replace(/[-|].*$/, "")
-    .replace(/\bCPA(s)?\b/i, "")
-    .trim();
+function toHomeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.protocol}//${u.hostname}/`;
+  } catch {
+    return "";
+  }
 }
 
-async function runQueries(
-  queries: string[],
-  language: "en" | "es",
-  limiter: RateLimiter,
-  maxPerQuery: number
+async function runLane(
+  spec: DiscoverySpec,
+  lane: Lane
 ): Promise<RawCpaCandidate[]> {
+  const limiter = new RateLimiter(900);
+
+  const rawQueries = spec.queries[lane];
+  const queries = assertArray(rawQueries, `queries.${lane}`);
+
   const out: RawCpaCandidate[] = [];
 
-  for (const q of queries) {
-    const hits = await duckDuckGoSearch(q, limiter, maxPerQuery);
-    for (const h of hits) {
-      const domain = normalizeDomain(h.url);
+  for (const query of queries) {
+    const hits = await duckDuckGoSearch(
+      query,
+      limiter,
+      spec.max_results_per_query
+    );
+
+    for (const hit of hits) {
+      const firm = cleanFirmName(hit.title || "");
+      const domain = normalizeDomain(hit.url);
+
+      if (!firm || firm.length < 4) continue;
       if (!domain) continue;
 
       out.push({
-        firm_name: inferFirmName(h.title),
+        firm_name: firm,
         domain,
-        url: h.url,
-        source_query: q,
-        language
+        home_url: toHomeUrl(hit.url),
+        source_url: hit.url,
+        metro: spec.metro,
+        lane,
+        source_query: query
       });
     }
   }
@@ -62,55 +107,38 @@ async function runQueries(
 }
 
 async function main() {
-  const specPath =
-    process.env.RUN_SPEC_PATH ||
-    "scripts/specs/houston.cpa.search.json";
-
-  const spec: SearchSpec = JSON.parse(
-    fs.readFileSync(specPath, "utf-8")
-  );
-
-  const limiter = new RateLimiter(900);
-
-  const en = await runQueries(
-    spec.english_queries,
-    "en",
-    limiter,
-    spec.max_per_query
-  );
-
-  const es = await runQueries(
-    spec.spanish_queries,
-    "es",
-    limiter,
-    spec.max_per_query
-  );
-
-  // de-dupe by domain, preserving language if either is Spanish
-  const merged = new Map<string, RawCpaCandidate>();
-
-  for (const c of [...en, ...es]) {
-    const existing = merged.get(c.domain);
-    if (!existing) {
-      merged.set(c.domain, c);
-    } else if (existing.language === "en" && c.language === "es") {
-      merged.set(c.domain, c);
-    }
+  if (!fs.existsSync(SPEC_PATH)) {
+    throw new Error(`Missing discovery spec: ${SPEC_PATH}`);
   }
 
-  const output = Array.from(merged.values());
-
-  const outDir = path.join("data", "houston");
-  fs.mkdirSync(outDir, { recursive: true });
-
-  fs.writeFileSync(
-    path.join(outDir, "cpas_raw.json"),
-    JSON.stringify(output, null, 2)
+  const spec: DiscoverySpec = JSON.parse(
+    fs.readFileSync(SPEC_PATH, "utf-8")
   );
 
-  console.log(
-    `CPA discovery complete: ${output.length} raw firms (${en.length} EN hits, ${es.length} ES hits)`
-  );
+  if (!Array.isArray(spec.lanes)) {
+    throw new Error("spec.lanes must be an array");
+  }
+
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  for (const lane of spec.lanes) {
+    if (lane !== "en" && lane !== "es") {
+      throw new Error(`Unsupported lane: ${lane}`);
+    }
+
+    const results = await runLane(spec, lane);
+    const outPath = path.join(DATA_DIR, `cpas_raw.${lane}.json`);
+
+    fs.writeFileSync(outPath, JSON.stringify(results, null, 2));
+
+    console.log(
+      `✓ CPA discovery (${lane.toUpperCase()}): ${results.length} candidates`
+    );
+  }
+
+  console.log("✓ CPA discovery complete (all lanes)");
 }
 
 main().catch((err) => {
