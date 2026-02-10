@@ -8,6 +8,7 @@
 
     "run:cpa-search": "node dist/scripts/run-cpa-search.js",
     "run:cpa-score": "node dist/scripts/run-cpa-score.js",
+        "run:cpa-phase1": "node dist/scripts/run-cpa-phase1.js",
 
     "run:lawyer-search": "node dist/scripts/run-lawyer.js",
     "run:supplier-search": "node dist/scripts/run-supplier.js"
