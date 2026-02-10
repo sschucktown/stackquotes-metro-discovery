@@ -1,2 +1,6 @@
-export type { TrustProxyCandidate, TrustProxySource } from "./types";
-export * from "./mineTrustProxy";
+import type { TrustProxyCandidate } from "./types.js";
+import { mineTrustProxyCandidates } from "./mineTrustProxy.js";
+
+export type { TrustProxyCandidate };
+
+export { mineTrustProxyCandidates };
