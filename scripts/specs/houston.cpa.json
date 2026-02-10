@@ -1,72 +1,22 @@
 {
-  "metro": "houston-tx",
-  "category": "cpa",
-  "language": "en",
-  "target_raw_results": 50,
-
-  "queries": [
-    "construction CPA Houston",
-    "construction accounting firm Houston",
-    "contractor CPA Houston",
-    "contractor accounting Houston",
-    "job costing CPA Houston",
-    "WIP accounting CPA Houston",
-    "progress billing CPA Houston",
-    "retainage accounting CPA Houston",
-    "construction bookkeeping Houston",
-    "contractor bookkeeping Houston",
-    "roofing contractor CPA Houston",
-    "HVAC contractor CPA Houston",
-    "plumbing contractor CPA Houston",
-    "electrical contractor CPA Houston",
-    "solar contractor CPA Houston",
-    "CPA firm serving contractors Houston",
-    "accountant for construction companies Houston",
-    "CPA for trades Houston"
-  ],
-
-  "spanish_parity": {
-    "enabled": true,
-    "language": "es",
-    "queries": [
-      "CPA construcción Houston",
-      "contador contratistas Houston",
-      "contabilidad construcción Houston",
-      "contador para contratistas Houston",
-      "CPA para construcción Houston"
-    ]
-  },
-
-  "filters": {
-    "exclude_domains_containing": [
-      "yelp.com",
-      "thumbtack.com",
-      "angi.com",
-      "homeadvisor.com",
-      "clutch.co",
-      "expertise.com",
-      "linkedin.com",
-      "facebook.com",
-      "indeed.com"
-    ],
-    "require_website": true,
-    "require_local_presence": true
-  },
-
-  "scoring_weights": {
-    "construction_language": 3,
-    "contractor_language": 3,
-    "job_costing_mentions": 4,
-    "wip_progress_billing": 4,
-    "retainage_mentions": 3,
-    "trade_specific_language": 2,
-    "spanish_language_support": 2,
-    "generic_small_business_only": -3,
-    "consumer_tax_only": -4
-  },
-
-  "output": {
-    "raw_path": "data/houston/cpas_raw.json",
-    "scored_path": "data/houston/cpas_scored.json"
+  "metro": "Houston",
+  "targets": {
+    "en": {
+      "queries": [
+        "Houston construction CPA",
+        "Houston contractor accounting firm",
+        "Houston job costing CPA"
+      ],
+      "max_results": 45
+    },
+    "es": {
+      "queries": [
+        "contador Houston construcción",
+        "CPA construcción Houston español",
+        "contabilidad contratistas Houston",
+        "servicios contables construcción Houston"
+      ],
+      "max_results": 45
+    }
   }
 }
