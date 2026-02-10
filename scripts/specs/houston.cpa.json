@@ -1,22 +1,21 @@
 {
   "metro": "Houston",
-  "targets": {
-    "en": {
-      "queries": [
-        "Houston construction CPA",
-        "Houston contractor accounting firm",
-        "Houston job costing CPA"
-      ],
-      "max_results": 45
-    },
-    "es": {
-      "queries": [
-        "contador Houston construcción",
-        "CPA construcción Houston español",
-        "contabilidad contratistas Houston",
-        "servicios contables construcción Houston"
-      ],
-      "max_results": 45
-    }
+  "lanes": ["en", "es"],
+  "max_results_per_query": 25,
+  "queries": {
+    "en": [
+      "Houston CPA construction contractors",
+      "Houston accounting firm construction",
+      "Houston CPA job costing contractors",
+      "Houston CPA work in progress construction",
+      "Houston CPA progress billing contractors"
+    ],
+    "es": [
+      "Houston contador construcción",
+      "Houston CPA contratistas español",
+      "Houston servicios contables construcción español",
+      "Houston contabilidad contratistas Houston",
+      "Houston contador construcción empresas"
+    ]
   }
 }
