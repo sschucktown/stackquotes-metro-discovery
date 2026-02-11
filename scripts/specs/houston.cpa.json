@@ -4,29 +4,61 @@
   "max_results_per_query": 25,
   "queries": {
     "en": [
-      "Houston construction CPA",
-      "Houston CPA for contractors",
-      "Houston CPA job costing construction",
+      "Houston CPA construction contractors",
+      "Houston accounting firm construction",
+      "Houston CPA job costing contractors",
       "Houston CPA work in progress construction",
+      "Houston CPA progress billing contractors",
+
       "Houston CPA percentage of completion",
-      "Houston CPA progress billing construction",
+      "Houston CPA WIP schedule",
+      "Houston CPA work in progress accounting",
+      "Houston CPA job cost accounting",
+      "Houston CPA progress billing",
       "Houston CPA retainage accounting",
+      "Houston CPA construction revenue recognition",
       "Houston CPA ASC 606 construction",
-      "Houston construction tax CPA",
-      "Houston contractor tax planning CPA",
-      "Houston roofing contractor CPA",
-      "Houston HVAC contractor CPA",
-      "Houston plumbing contractor CPA",
-      "Houston electrical contractor CPA"
+
+      "Houston CPA contractor tax planning",
+      "Houston CPA construction tax strategy",
+      "Houston CPA contractor S corp",
+      "Houston CPA construction business advisory",
+
+      "Houston roofing CPA",
+      "Houston HVAC CPA",
+      "Houston plumbing CPA",
+      "Houston electrical contractor CPA",
+      "Houston general contractor CPA",
+
+      "Houston construction accounting firm",
+      "Houston CPA firm construction industry",
+      "Houston CPA for builders",
+      "Houston CPA for subcontractors"
     ],
     "es": [
-      "CPA construcción Houston",
-      "contador construcción Houston",
-      "CPA para contratistas Houston",
-      "contadores para contratistas Houston",
-      "impuestos contratistas Houston CPA",
-      "contabilidad construcción Houston CPA",
-      "CPA construcción Houston español"
+      "Houston contador construcción",
+      "Houston CPA contratistas español",
+      "Houston servicios contables construcción español",
+      "Houston contabilidad contratistas Houston",
+      "Houston contador construcción empresas",
+
+      "Houston CPA porcentaje de avance construcción",
+      "Houston contabilidad obra en progreso CPA",
+      "Houston CPA contabilidad de costos de obra",
+      "Houston CPA facturación por avance",
+      "Houston CPA retenciones construcción",
+      "Houston CPA ingresos por contrato construcción",
+
+      "Houston contador contratistas construcción",
+      "Houston CPA impuestos contratistas",
+      "Houston servicios contables construcción Houston",
+      "Houston asesoría fiscal construcción",
+
+      "Houston contador techos construcción",
+      "Houston contador HVAC construcción",
+      "Houston contador plomería construcción",
+      "Houston contador electricistas construcción",
+      "Houston contador contratistas generales"
     ]
   }
 }
