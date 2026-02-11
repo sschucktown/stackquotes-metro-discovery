@@ -20,8 +20,8 @@ type RunSpec = {
 type FirmCandidate = {
   domain: string;
   homeUrl: string;
-  discoveredFrom: Set<string>;
   sourceQueries: Set<string>;
+  discoveredUrls: Set<string>;
 };
 
 /* =========================
@@ -49,23 +49,30 @@ function toHomeUrl(url: string): string | null {
   }
 }
 
-function isGarbageUrl(url: string, domain: string): boolean {
-  if (!domain) return true;
-
-  const bannedDomains = [
+function isNonFirmDomain(domain: string): boolean {
+  const banned = [
     "duckduckgo.com",
     "google.com",
     "bing.com",
+    "yelp.com",
+    "thumbtack.com",
+    "expertise.com",
+    "clutch.co",
+    "goodfirms.co",
+    "bizjournals.com",
+    "tx.cpa",
     "facebook.com",
-    "linkedin.com",
-    "yelp.com"
+    "linkedin.com"
   ];
+  return banned.some((b) => domain === b || domain.endsWith(`.${b}`));
+}
 
-  if (bannedDomains.includes(domain)) return true;
-  if (/\.(js|css|json)$/i.test(url)) return true;
-  if (url.includes("/y.js") || url.includes("/assets")) return true;
-
-  return false;
+function isAssetUrl(url: string): boolean {
+  return (
+    /\.(js|css|json)$/i.test(url) ||
+    url.includes("/y.js") ||
+    url.includes("/assets")
+  );
 }
 
 function slugifyMetro(s: string): string {
@@ -91,7 +98,7 @@ async function main() {
   const searchLimiter = new RateLimiter(900);
   const crawlLimiter = new RateLimiter(750);
 
-  // DOMAIN-FIRST MAP
+  /** DOMAIN-FIRST CANDIDATES */
   const firms = new Map<string, FirmCandidate>();
 
   /* =========================
@@ -99,30 +106,33 @@ async function main() {
   ========================= */
 
   for (const lane of spec.lanes) {
-    for (const q of spec.queries[lane]) {
-      const hits = await duckDuckGoSearch(q, searchLimiter, spec.max_results_per_query);
+    for (const query of spec.queries[lane]) {
+      const hits = await duckDuckGoSearch(
+        query,
+        searchLimiter,
+        spec.max_results_per_query
+      );
 
-      for (const h of hits as any[]) {
-        const url = h.url;
-        if (!url) continue;
+      for (const hit of hits as any[]) {
+        const url = hit.url;
+        if (!url || isAssetUrl(url)) continue;
 
         const domain = normalizeDomain(url);
-        if (!domain) continue;
-        if (isGarbageUrl(url, domain)) continue;
+        if (!domain || isNonFirmDomain(domain)) continue;
 
         const homeUrl = toHomeUrl(url);
         if (!homeUrl) continue;
 
         const existing = firms.get(domain);
         if (existing) {
-          existing.discoveredFrom.add(url);
-          existing.sourceQueries.add(q);
+          existing.sourceQueries.add(query);
+          existing.discoveredUrls.add(url);
         } else {
           firms.set(domain, {
             domain,
             homeUrl,
-            discoveredFrom: new Set([url]),
-            sourceQueries: new Set([q])
+            sourceQueries: new Set([query]),
+            discoveredUrls: new Set([url])
           });
         }
       }
@@ -136,17 +146,17 @@ async function main() {
   const results: any[] = [];
 
   for (const firm of firms.values()) {
-    const res = await fetchHtml(firm.homeUrl, crawlLimiter, {
+    const page = await fetchHtml(firm.homeUrl, crawlLimiter, {
       timeoutMs: 20000,
       maxRetries: 2
     });
 
-    if (!res.ok || !res.html) continue;
+    if (!page.ok || !page.html) continue;
 
-    const extracted = extractFromHtml(res.html);
-    const evaled = evaluateCpaSite(extracted.text);
+    const extracted = extractFromHtml(page.html);
+    const evaluation = evaluateCpaSite(extracted.text);
 
-    if (!evaled.keep) continue;
+    if (!evaluation.keep) continue;
 
     const firmName =
       extracted.h1?.trim() ||
@@ -158,11 +168,11 @@ async function main() {
       domain: firm.domain,
       url: firm.homeUrl,
       metro: spec.metro,
-      score: evaled.score,
-      signals: evaled.signals,
-      reasons: evaled.reasons,
+      score: evaluation.score,
+      signals: evaluation.signals,
+      reasons: evaluation.reasons,
       source_queries: Array.from(firm.sourceQueries),
-      discovered_urls_sample: Array.from(firm.discoveredFrom).slice(0, 5)
+      discovered_urls_sample: Array.from(firm.discoveredUrls).slice(0, 5)
     });
   }
 
@@ -181,7 +191,7 @@ async function main() {
   const outPath = resolve(outDir, "cpas_raw.json");
   writeFileSync(outPath, JSON.stringify(output, null, 2), "utf-8");
 
-  console.log(`✅ Houston CPA discovery complete`);
+  console.log(`✅ CPA Phase-1 normalized discovery complete`);
   console.log(`Domains discovered: ${firms.size}`);
   console.log(`Firms kept: ${results.length}`);
 }
