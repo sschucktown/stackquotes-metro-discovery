@@ -4,18 +4,29 @@
   "max_results_per_query": 25,
   "queries": {
     "en": [
-      "Houston CPA construction contractors",
-      "Houston accounting firm construction",
-      "Houston CPA job costing contractors",
+      "Houston construction CPA",
+      "Houston CPA for contractors",
+      "Houston CPA job costing construction",
       "Houston CPA work in progress construction",
-      "Houston CPA progress billing contractors"
+      "Houston CPA percentage of completion",
+      "Houston CPA progress billing construction",
+      "Houston CPA retainage accounting",
+      "Houston CPA ASC 606 construction",
+      "Houston construction tax CPA",
+      "Houston contractor tax planning CPA",
+      "Houston roofing contractor CPA",
+      "Houston HVAC contractor CPA",
+      "Houston plumbing contractor CPA",
+      "Houston electrical contractor CPA"
     ],
     "es": [
-      "Houston contador construcción",
-      "Houston CPA contratistas español",
-      "Houston servicios contables construcción español",
-      "Houston contabilidad contratistas Houston",
-      "Houston contador construcción empresas"
+      "CPA construcción Houston",
+      "contador construcción Houston",
+      "CPA para contratistas Houston",
+      "contadores para contratistas Houston",
+      "impuestos contratistas Houston CPA",
+      "contabilidad construcción Houston CPA",
+      "CPA construcción Houston español"
     ]
   }
 }
