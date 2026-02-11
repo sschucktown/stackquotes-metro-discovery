@@ -1,24 +1,17 @@
 {
   "name": "stackquotes-metro-discovery",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-        "run:cpa-enrich": "node dist/scripts/run-cpa-enrich.js",
-
-    "run:cpa-search": "node dist/scripts/run-cpa-search.js",
-    "run:cpa-score": "node dist/scripts/run-cpa-score.js",
-        "run:cpa-phase1": "node dist/scripts/run-cpa-phase1.js",
-
-    "run:lawyer-search": "node dist/scripts/run-lawyer.js",
-    "run:supplier-search": "node dist/scripts/run-supplier.js"
+    "run:cpa": "node dist/scripts/run-cpa.js"
   },
   "dependencies": {
-    "cheerio": "^1.0.0-rc.12",
-    "pdf-parse": "^1.1.1"
+    "cheerio": "^1.0.0-rc.12"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.5.4",
+    "@types/node": "^20.11.0"
   }
 }
