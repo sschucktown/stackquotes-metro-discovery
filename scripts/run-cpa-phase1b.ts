@@ -122,3 +122,15 @@ async function main() {
         domainCount: uniqueDomains.length,
         domains: uniqueDomains
       },
+      null,
+      2
+    )
+  );
+
+  console.log(`Wrote ${uniqueDomains.length} domains → ${outputPath}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
