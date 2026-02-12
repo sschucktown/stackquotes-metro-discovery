@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "run:cpa": "node dist/scripts/run-cpa.js"
+    "run:cpa": "node dist/scripts/run-cpa.js",
+      "run:cpa:phase1b": "tsx scripts/run-cpa-phase1b.ts"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12"
