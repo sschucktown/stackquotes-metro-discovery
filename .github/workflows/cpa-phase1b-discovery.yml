@@ -22,16 +22,17 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
-      - name: Debug filesystem
-        run: |
-          echo "=== ROOT DIRECTORY ==="
-          ls -la
-          echo ""
-          echo "=== SPECS DIRECTORY ==="
-          ls -la specs || echo "No specs folder found"
-
+      # ---------- Phase 1b EN ----------
       - name: Run Phase 1b CPA discovery (EN)
         run: npm run run:cpa:phase1b -- specs/houston.cpa.phase1b.en.json
 
+      # ---------- Phase 1b ES ----------
       - name: Run Phase 1b CPA discovery (ES)
         run: npm run run:cpa:phase1b -- specs/houston.cpa.phase1b.es.json
+
+      # ---------- Upload Artifacts ----------
+      - name: Upload Phase 1b artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpa-phase1b
+          path: data/**
