@@ -22,7 +22,6 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
-      # ---- DEBUG SECTION (temporary, deterministic) ----
       - name: Debug filesystem
         run: |
           echo "=== ROOT DIRECTORY ==="
@@ -30,10 +29,6 @@ jobs:
           echo ""
           echo "=== SPECS DIRECTORY ==="
           ls -la specs || echo "No specs folder found"
-          echo ""
-          echo "=== SCRIPTS DIRECTORY ==="
-          ls -la scripts || echo "No scripts folder found"
-      # ---------------------------------------------------
 
       - name: Run Phase 1b CPA discovery (EN)
         run: npm run run:cpa:phase1b -- specs/houston.cpa.phase1b.en.json
