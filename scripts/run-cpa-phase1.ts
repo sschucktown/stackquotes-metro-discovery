@@ -3,6 +3,13 @@ import path from "path";
 import { RateLimiter } from "./core/rateLimit.js";
 import { duckDuckGoSearch } from "./core/searchDuckDuckGo.js";
 
+type DiscoverySpec = {
+  metro: string;
+  role: "cpa" | "lawyer" | "supplier";
+  language: "en" | "es";
+  queries: string[];
+};
+
 type RawCpaFirm = {
   name: string;
   url: string;
@@ -57,50 +64,52 @@ async function runLane(
 }
 
 async function main() {
-  const outDir = path.join("data");
-  ensureDir(outDir);
+  const specPath = process.argv[2];
+  if (!specPath) {
+    throw new Error("Spec file path required");
+  }
 
-  // ============================
-  // ENGLISH — VERY BROAD
-  // ============================
-  const enQueries = [
-    "CPA Houston",
-    "Accounting firm Houston",
-    "Tax and accounting Houston",
-    "Certified Public Accountant Houston",
-    "Small business accounting Houston",
-    "Industries we serve CPA Houston",
-    "Business accounting Houston TX",
-    "Professional accounting services Houston"
-  ];
+  const absoluteSpecPath = path.resolve(specPath);
+  if (!fs.existsSync(absoluteSpecPath)) {
+    throw new Error(`Spec file not found: ${absoluteSpecPath}`);
+  }
 
-  // ============================
-  // SPANISH — VERY BROAD
-  // ============================
-  const esQueries = [
-    "contador público Houston",
-    "contador Houston TX",
-    "servicios contables Houston",
-    "CPA en español Houston",
-    "impuestos y contabilidad Houston",
-    "firma contable Houston español",
-    "contador para negocios Houston"
-  ];
+  const raw = fs.readFileSync(absoluteSpecPath, "utf-8");
+  const spec: DiscoverySpec = JSON.parse(raw);
 
-  console.log("Running Phase 1 CPA discovery — EN");
-  const en = await runLane("en", enQueries);
+  if (
+    !spec.metro ||
+    !spec.role ||
+    !spec.language ||
+    !Array.isArray(spec.queries)
+  ) {
+    throw new Error("Invalid discovery spec schema");
+  }
 
-  console.log("Running Phase 1 CPA discovery — ES");
-  const es = await runLane("es", esQueries);
+  console.log(
+    `Running Phase 1b discovery — ${spec.metro} — ${spec.role} — ${spec.language}`
+  );
 
-  const enPath = path.join(outDir, "cpas_raw.phase1.en.json");
-  const esPath = path.join(outDir, "cpas_raw.phase1.es.json");
+  const results = await runLane(spec.language, spec.queries);
 
-  fs.writeFileSync(enPath, JSON.stringify(en, null, 2));
-  fs.writeFileSync(esPath, JSON.stringify(es, null, 2));
+  const outputDir = path.join(
+    "data",
+    spec.metro.toLowerCase(),
+    spec.role
+  );
 
-  console.log(`Wrote ${en.length} EN CPA firms → ${enPath}`);
-  console.log(`Wrote ${es.length} ES CPA firms → ${esPath}`);
+  ensureDir(outputDir);
+
+  const outputPath = path.join(
+    outputDir,
+    `cpas_raw.phase1b.${spec.language}.json`
+  );
+
+  fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
+
+  console.log(
+    `Wrote ${results.length} ${spec.language.toUpperCase()} firms → ${outputPath}`
+  );
 }
 
 main().catch((err) => {
